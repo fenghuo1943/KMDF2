@@ -1,4 +1,5 @@
-; KMDF2.inf (FIXED)
+; KMDF2.inf - VHF Virtual Mouse Driver
+; Based on Microsoft VHF Documentation
 
 [Version]
 Signature   = "$WINDOWS NT$"
@@ -6,8 +7,8 @@ Class       = HIDClass
 ClassGuid   = {745A17A0-74D3-11D0-B6FE-00A0C90F57DA}
 Provider    = %ManufacturerName%
 CatalogFile = KMDF2.cat
-DriverVer   = 04/20/2026,12.47.40.899
-PnpLockdown=1
+DriverVer   = 04/23/2026,1.0.0.1
+PnpLockdown = 1
 
 [DestinationDirs]
 DefaultDestDir = 12
@@ -24,7 +25,7 @@ KMDF2.sys = 1
 [Standard.NT$ARCH$]
 %KMDF2.DeviceDesc% = KMDF2_Device, Root\KMDF2
 
-; ================= 安装 =================
+; =================== 设备安装 ===================
 
 [KMDF2_Device.NT]
 CopyFiles = Drivers_Dir
@@ -32,36 +33,39 @@ CopyFiles = Drivers_Dir
 [Drivers_Dir]
 KMDF2.sys
 
-; ================= 服务 =================
+; =================== 硬件注册表设置 ===================
+
+[KMDF2_Device.NT.HW]
+AddReg = KMDF2_Device.NT.AddReg.HW
+
+[KMDF2_Device.NT.AddReg.HW]
+; 添加 mshidkmdf 作为下层过滤器 (VHF必需)
+HKR,,"LowerFilters",0x00010008,"mshidkmdf"
+
+; =================== 服务安装 ===================
 
 [KMDF2_Device.NT.Services]
-AddService = KMDF2,0x00000002, KMDF2_Service_Inst
+AddService = KMDF2,0x00000002,KMDF2_Service_Inst
 
 [KMDF2_Service_Inst]
 DisplayName    = %KMDF2.SVCDESC%
-ServiceType    = 1
-StartType      = 3
-ErrorControl   = 1
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
 ServiceBinary  = %12%\KMDF2.sys
 
-; ================= KMDF =================
+; =================== KMDF 配置 ===================
 
 [KMDF2_Device.NT.Wdf]
-KmdfService = KMDF2, KMDF2_wdfsect
+KmdfService = KMDF2,KMDF2_wdfsect
 
 [KMDF2_wdfsect]
 KmdfLibraryVersion = $KMDFVERSION$
 
-[HIDVHF_Inst.NT.HW]
-AddReg = HIDVHF_Inst.NT.AddReg
-
-[HIDVHF_Inst.NT.AddReg]
-HKR,,"LowerFilters",0x00010000,"vhf"
-
-; ================= 字符串 =================
+; =================== 字符串定义 ===================
 
 [Strings]
 ManufacturerName = "MyCompany"
-DiskName = "KMDF2 Installation Disk"
-KMDF2.DeviceDesc = "VHF Virtual Mouse"
-KMDF2.SVCDESC = "VHF Virtual Mouse"
+DiskName = "VHF Virtual Mouse Installation Disk"
+KMDF2.DeviceDesc = "VHF Virtual Mouse Device"
+KMDF2.SVCDESC = "VHF Virtual Mouse Service"
