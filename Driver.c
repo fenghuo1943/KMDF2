@@ -66,8 +66,6 @@ NTSTATUS VirtualMouseEvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
     NTSTATUS status = WdfDeviceCreate(&DeviceInit, &attr, &device);
     if (!NT_SUCCESS(status)) return status;
 
-    PDEVICE_CONTEXT ctx = DeviceGetContext(device);
-
     UNICODE_STRING sym;
     RtlInitUnicodeString(&sym, L"\\DosDevices\\VirtualMouse");
     WdfDeviceCreateSymbolicLink(device, &sym);
