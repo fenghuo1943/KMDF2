@@ -36,11 +36,12 @@ KMDF2.sys
 ; =================== 硬件注册表设置 ===================
 
 [KMDF2_Device.NT.HW]
-AddReg = KMDF2_Device.NT.AddReg.HW
+AddReg = KMDF2_Device.NT.HW.AddReg
 
-[KMDF2_Device.NT.AddReg.HW]
+[KMDF2_Device.NT.HW.AddReg]
 ; 添加 mshidkmdf 作为下层过滤器 (VHF必需)
-HKR,,"LowerFilters",0x00010008,"mshidkmdf"
+; FLG_ADDREG_TYPE_MULTI_SZ = 0x00010000
+HKR,,"LowerFilters",0x00010000,"mshidkmdf"
 
 ; =================== 服务安装 ===================
 

@@ -1,5 +1,6 @@
 ﻿#include "Driver.h"
 
+// Mouse Report Descriptor (37 bytes)
 const UCHAR g_ReportDescriptor[] = {
     0x05, 0x01,       // Usage Page (Generic Desktop)
     0x09, 0x02,       // Usage (Mouse)
@@ -10,7 +11,7 @@ const UCHAR g_ReportDescriptor[] = {
     0x09, 0x01,       //   Usage (Pointer)
     0xA1, 0x00,       //   Collection (Physical)
     
-
+    // Buttons (3 bits)
     0x05, 0x09,       //     Usage Page (Button)
     0x19, 0x01,       //     Usage Minimum (Button 1)
     0x29, 0x03,       //     Usage Maximum (Button 3)
@@ -20,12 +21,12 @@ const UCHAR g_ReportDescriptor[] = {
     0x75, 0x01,       //     Report Size (1)
     0x81, 0x02,       //     Input (Data, Variable, Absolute)
     
-
+    // Padding (5 bits)
     0x95, 0x01,       //     Report Count (1)
     0x75, 0x05,       //     Report Size (5)
     0x81, 0x03,       //     Input (Constant, Variable, Absolute)
     
-
+    // X/Y coordinates (8 bits each, signed)
     0x05, 0x01,       //     Usage Page (Generic Desktop)
     0x09, 0x30,       //     Usage (X)
     0x09, 0x31,       //     Usage (Y)
@@ -78,19 +79,28 @@ NTSTATUS EvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
 
     KdPrint(("[VHF Driver] EvtDeviceAdd called\n"));
 
+    // 设置设备类型为 FILE_DEVICE_UNKNOWN (VHF驱动必需)
+    WdfDeviceInitSetDeviceType(DeviceInit, FILE_DEVICE_UNKNOWN);
+    
+    // 设置为独占访问
+    WdfDeviceInitSetExclusive(DeviceInit, FALSE);
 
-    WdfDeviceInitSetDeviceType(DeviceInit, FILE_DEVICE_BUS_EXTENDER);
 
-
+    // 初始化PNP/Power事件回调
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnpCallbacks);
     pnpCallbacks.EvtDevicePrepareHardware = EvtDevicePrepareHardware;
     pnpCallbacks.EvtDeviceReleaseHardware = EvtDeviceReleaseHardware;
     WdfDeviceInitSetPnpPowerEventCallbacks(DeviceInit, &pnpCallbacks);
+    
+    KdPrint(("[VHF Driver] PnP callbacks registered\n"));
 
+    // 初始化设备上下文属性
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr, DEVICE_CONTEXT);
     attr.EvtCleanupCallback = EvtDeviceContextCleanup;
 
-
+    KdPrint(("[VHF Driver] Creating device object...\n"));
+    
+    // 创建设备对象
     status = WdfDeviceCreate(&DeviceInit, &attr, &device);
     if (!NT_SUCCESS(status))
     {
@@ -177,6 +187,7 @@ VOID EvtDeviceContextCleanup(WDFOBJECT DeviceObject)
     PDEVICE_CONTEXT context = DeviceGetContext(device);
 
     KdPrint(("[VHF Driver] EvtDeviceContextCleanup called\n"));
+    KdPrint(("[VHF Driver] Cleanup reason: Device object being deleted\n"));
 
 
     StopAndDeleteVhf(context);
@@ -189,19 +200,20 @@ NTSTATUS CreateAndStartVhf(PDEVICE_CONTEXT Context, WDFDEVICE Device)
     NTSTATUS status;
 
     KdPrint(("[VHF Driver] Creating VHF...\n"));
+    KdPrint(("[VHF Driver] Report descriptor size: %d bytes\n", sizeof(g_ReportDescriptor)));
 
-
+    // 初始化 VHF 配置
     VHF_CONFIG_INIT(&vhfConfig,
                     WdfDeviceWdmGetDeviceObject(Device),
                     sizeof(g_ReportDescriptor),
                     (PUCHAR)g_ReportDescriptor);
 
-
+    // 设置 HID 设备属性
     vhfConfig.VendorID = 0x1234;
     vhfConfig.ProductID = 0x5678;
     vhfConfig.VersionNumber = 0x0001;
 
-
+    KdPrint(("[VHF Driver] Calling VhfCreate...\n"));
     status = VhfCreate(&vhfConfig, &Context->VhfHandle);
     if (!NT_SUCCESS(status))
     {
@@ -210,9 +222,10 @@ NTSTATUS CreateAndStartVhf(PDEVICE_CONTEXT Context, WDFDEVICE Device)
         return status;
     }
 
-    KdPrint(("[VHF Driver] VhfCreate succeeded\n"));
+    KdPrint(("[VHF Driver] VhfCreate succeeded, handle: 0x%p\n", Context->VhfHandle));
 
-
+    // 启动 VHF
+    KdPrint(("[VHF Driver] Calling VhfStart...\n"));
     status = VhfStart(Context->VhfHandle);
     if (!NT_SUCCESS(status))
     {
