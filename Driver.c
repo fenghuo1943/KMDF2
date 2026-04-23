@@ -86,7 +86,7 @@ NTSTATUS VirtualMouseEvtSelfManagedIoInit(WDFDEVICE Device)
 
     VHF_CONFIG_INIT(
         &vhfConfig,
-        WdfDeviceWdmGetPhysicalDevice(Device),
+        WdfDeviceWdmGetDeviceObject(Device),
         sizeof(g_ReportDescriptor),
         (PUCHAR)g_ReportDescriptor
     );
