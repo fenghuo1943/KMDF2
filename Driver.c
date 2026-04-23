@@ -51,12 +51,16 @@ NTSTATUS VirtualMouseEvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
 {
     UNREFERENCED_PARAMETER(Driver);
 
-    //WdfFdoInitSetFilter(DeviceInit);
-
     WdfDeviceInitSetDeviceType(DeviceInit, FILE_DEVICE_UNKNOWN);
 
     WDF_OBJECT_ATTRIBUTES attr;
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr, DEVICE_CONTEXT);
+    attr.EvtCleanupCallback = VirtualMouseEvtDeviceContextCleanup;
+
+    WDF_PNPPOWER_EVENT_CALLBACKS pnpCallbacks;
+    WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnpCallbacks);
+    pnpCallbacks.EvtDeviceSelfManagedIoInit = VirtualMouseEvtSelfManagedIoInit;
+    WdfDeviceInitSetPnpPowerEventCallbacks(DeviceInit, &pnpCallbacks);
 
     WDFDEVICE device;
     NTSTATUS status = WdfDeviceCreate(&DeviceInit, &attr, &device);
@@ -71,11 +75,20 @@ NTSTATUS VirtualMouseEvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
     WDF_IO_QUEUE_CONFIG q;
     WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q, WdfIoQueueDispatchParallel);
     q.EvtIoDeviceControl = EvtIoDeviceControl;
-    WdfIoQueueCreate(device, &q, WDF_NO_OBJECT_ATTRIBUTES, NULL);
+    status = WdfIoQueueCreate(device, &q, WDF_NO_OBJECT_ATTRIBUTES, NULL);
+    if (!NT_SUCCESS(status)) return status;
 
+    return status;
+}
+
+NTSTATUS VirtualMouseEvtSelfManagedIoInit(WDFDEVICE Device)
+{
+    PDEVICE_CONTEXT ctx = DeviceGetContext(Device);
     VHF_CONFIG vhfConfig;
-    VHF_CONFIG_INIT(&vhfConfig,
-        WdfDeviceWdmGetPhysicalDevice(device),
+
+    VHF_CONFIG_INIT(
+        &vhfConfig,
+        WdfDeviceWdmGetPhysicalDevice(Device),
         sizeof(g_ReportDescriptor),
         (PUCHAR)g_ReportDescriptor
     );
@@ -84,18 +97,31 @@ NTSTATUS VirtualMouseEvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
     vhfConfig.VersionNumber = 0x0001;
 
     KdPrint(("Before VhfCreate\n"));
-    status = VhfCreate(&vhfConfig, &ctx->VhfHandle);
+    NTSTATUS status = VhfCreate(&vhfConfig, &ctx->VhfHandle);
     KdPrint(("VhfCreate status = 0x%x\n", status));
-
     if (!NT_SUCCESS(status)) return status;
 
     status = VhfStart(ctx->VhfHandle);
     KdPrint(("VhfStart status = 0x%x\n", status));
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status))
+    {
+        VhfDelete(ctx->VhfHandle, TRUE);
+        ctx->VhfHandle = NULL;
+        return status;
+    }
 
-    KdPrint(("VhfStart VHF started\n"));
+    KdPrint(("VHF started\n"));
+    return STATUS_SUCCESS;
+}
 
-    return status;
+VOID VirtualMouseEvtDeviceContextCleanup(WDFOBJECT DeviceObject)
+{
+    PDEVICE_CONTEXT ctx = DeviceGetContext((WDFDEVICE)DeviceObject);
+    if (ctx->VhfHandle != NULL)
+    {
+        VhfDelete(ctx->VhfHandle, TRUE);
+        ctx->VhfHandle = NULL;
+    }
 }
 VOID EvtIoDeviceControl(
     WDFQUEUE Queue,
