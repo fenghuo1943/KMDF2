@@ -1,0 +1,61 @@
+; KMDF2.inf (FIXED)
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = HIDClass
+ClassGuid   = {745A17A0-74D3-11D0-B6FE-00A0C90F57DA}
+Provider    = %ManufacturerName%
+CatalogFile = KMDF2.cat
+DriverVer   = 04/20/2026,12.47.40.899
+PnpLockdown=1
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[SourceDisksNames]
+1 = %DiskName%,,,
+
+[SourceDisksFiles]
+KMDF2.sys = 1
+
+[Manufacturer]
+%ManufacturerName% = Standard,NT$ARCH$
+
+[Standard.NT$ARCH$]
+%KMDF2.DeviceDesc% = KMDF2_Device, Root\KMDF2
+
+; ================= 安装 =================
+
+[KMDF2_Device.NT]
+CopyFiles = Drivers_Dir
+
+[Drivers_Dir]
+KMDF2.sys
+
+; ================= 服务 =================
+
+[KMDF2_Device.NT.Services]
+AddService = KMDF2,0x00000002, KMDF2_Service_Inst
+
+[KMDF2_Service_Inst]
+DisplayName    = %KMDF2.SVCDESC%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\KMDF2.sys
+
+; ================= KMDF =================
+
+[KMDF2_Device.NT.Wdf]
+KmdfService = KMDF2, KMDF2_wdfsect
+
+[KMDF2_wdfsect]
+KmdfLibraryVersion = $KMDFVERSION$
+
+; ================= 字符串 =================
+
+[Strings]
+ManufacturerName = "MyCompany"
+DiskName = "KMDF2 Installation Disk"
+KMDF2.DeviceDesc = "VHF Virtual Mouse"
+KMDF2.SVCDESC = "VHF Virtual Mouse"

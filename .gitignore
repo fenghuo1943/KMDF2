@@ -1,0 +1,64 @@
+# Build directories
+x64/
+ARM64/
+Debug/
+Release/
+*.tlog/
+ipch/
+
+# Visual Studio files
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.db-shm
+*.VC.db-wal
+
+# Build outputs
+*.sys
+*.pdb
+*.obj
+*.exp
+*.lib
+*.ilk
+*.iobj
+*.ipdb
+*.res
+*.rc
+*.manifest
+*.idb
+*.bsc
+*.sbr
+*.metagen
+*.bi
+
+# Driver specific
+*.cat
+*.inf_loc
+*_loc.inf
+*.cer
+*.pfx
+*.spc
+
+# Test Certificate
+*.pvk
+
+# Windows Driver Kit generated files
+CoInstaller/
+WdfCoInstaller*.dll
+
+# Backup files
+*.bak
+*.old
+*.orig
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+~$*
