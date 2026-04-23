@@ -145,9 +145,9 @@ VOID SendMouseReport(PDEVICE_CONTEXT ctx, CHAR dx, CHAR dy, UCHAR buttons)
     UCHAR report[4];
 
     report[0] = 0x01;
-    report[0] = buttons;
-    report[1] = dx;
-    report[2] = dy;
+    report[1] = buttons;
+    report[2] = dx;
+    report[3] = dy;
 
     HID_XFER_PACKET packet;
 
