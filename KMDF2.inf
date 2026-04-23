@@ -52,6 +52,12 @@ KmdfService = KMDF2, KMDF2_wdfsect
 [KMDF2_wdfsect]
 KmdfLibraryVersion = $KMDFVERSION$
 
+[HIDVHF_Inst.NT.HW]
+AddReg = HIDVHF_Inst.NT.AddReg
+
+[HIDVHF_Inst.NT.AddReg]
+HKR,,"LowerFilters",0x00010000,"vhf"
+
 ; ================= 字符串 =================
 
 [Strings]
