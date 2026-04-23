@@ -1,6 +1,5 @@
 #include "Driver.h"
 //#include <hidport.h>
-#pragma comment(lib, "VhfKm.lib")
 
 const UCHAR g_ReportDescriptor[] = {
     0x05, 0x01,       // Usage Page (Generic Desktop)
@@ -192,10 +191,15 @@ VOID SendMouseReport(PDEVICE_CONTEXT ctx, CHAR dx, CHAR dy, UCHAR buttons)
     report[3] = dy;
 
     HID_XFER_PACKET packet;
+    RtlZeroMemory(&packet, sizeof(packet));
 
     packet.reportBuffer = report;
     packet.reportBufferLen = sizeof(report);
     packet.reportId = 0x01;
 
-    VhfReadReportSubmit(ctx->VhfHandle, &packet);
+    NTSTATUS status = VhfReadReportSubmit(ctx->VhfHandle, &packet);
+    if (!NT_SUCCESS(status))
+    {
+        KdPrint(("VhfReadReportSubmit failed: 0x%x\n", status));
+    }
 }
