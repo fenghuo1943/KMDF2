@@ -1,383 +1,275 @@
-﻿#include "Driver.h"
+﻿#include "driver.h"
+#include <wdmsec.h>
 
-// Mouse Report Descriptor (37 bytes)
-const UCHAR g_ReportDescriptor[] = {
-    0x05, 0x01,       // Usage Page (Generic Desktop)
-    0x09, 0x02,       // Usage (Mouse)
-    0xA1, 0x01,       // Collection (Application)
-    
-    0x85, 0x01,       //   Report ID (1)
-    
-    0x09, 0x01,       //   Usage (Pointer)
-    0xA1, 0x00,       //   Collection (Physical)
-    
-    // Buttons (3 bits)
-    0x05, 0x09,       //     Usage Page (Button)
-    0x19, 0x01,       //     Usage Minimum (Button 1)
-    0x29, 0x03,       //     Usage Maximum (Button 3)
-    0x15, 0x00,       //     Logical Minimum (0)
-    0x25, 0x01,       //     Logical Maximum (1)
-    0x95, 0x03,       //     Report Count (3)
-    0x75, 0x01,       //     Report Size (1)
-    0x81, 0x02,       //     Input (Data, Variable, Absolute)
-    
-    // Padding (5 bits)
-    0x95, 0x01,       //     Report Count (1)
-    0x75, 0x05,       //     Report Size (5)
-    0x81, 0x03,       //     Input (Constant, Variable, Absolute)
-    
-    // X/Y coordinates (8 bits each, signed)
-    0x05, 0x01,       //     Usage Page (Generic Desktop)
-    0x09, 0x30,       //     Usage (X)
-    0x09, 0x31,       //     Usage (Y)
-    0x15, 0x81,       //     Logical Minimum (-127)
-    0x25, 0x7F,       //     Logical Maximum (127)
-    0x75, 0x08,       //     Report Size (8)
-    0x95, 0x02,       //     Report Count (2)
-    0x81, 0x06,       //     Input (Data, Variable, Relative)
-    
-    0xC0,             //   End Collection
-    0xC0              // End Collection
+#pragma comment(lib, "vhfkm.lib")
+
+VHFHANDLE g_VhfHandle = NULL;
+WDFDEVICE g_ControlDevice = NULL;
+
+// ================= HID Descriptor =================
+
+UCHAR g_MouseReportDescriptor[] = {
+    0x05, 0x01,
+    0x09, 0x02,
+    0xA1, 0x01,
+    0x09, 0x01,
+    0xA1, 0x00,
+
+    0x05, 0x09,
+    0x19, 0x01,
+    0x29, 0x03,
+    0x15, 0x00,
+    0x25, 0x01,
+    0x95, 0x03,
+    0x75, 0x01,
+    0x81, 0x02,
+
+    0x95, 0x01,
+    0x75, 0x05,
+    0x81, 0x03,
+
+    0x05, 0x01,
+    0x09, 0x30,
+    0x09, 0x31,
+    0x15, 0x81,
+    0x25, 0x7F,
+    0x75, 0x08,
+    0x95, 0x02,
+    0x81, 0x06,
+
+    0xC0,
+    0xC0
 };
 
+// ================= DriverEntry =================
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 {
     WDF_DRIVER_CONFIG config;
     NTSTATUS status;
 
-    KdPrint(("[VHF Driver] DriverEntry called\n"));
-
+    KdPrint(("[VHF Driver] DriverEntry\n"));
 
     WDF_DRIVER_CONFIG_INIT(&config, EvtDeviceAdd);
-    
 
-    status = WdfDriverCreate(DriverObject, 
-                             RegistryPath, 
-                             WDF_NO_OBJECT_ATTRIBUTES, 
-                             &config, 
-                             WDF_NO_HANDLE);
-    
-    if (!NT_SUCCESS(status))
-    {
-        KdPrint(("[VHF Driver] WdfDriverCreate failed: 0x%x\n", status));
+    status = WdfDriverCreate(
+        DriverObject,
+        RegistryPath,
+        WDF_NO_OBJECT_ATTRIBUTES,
+        &config,
+        WDF_NO_HANDLE
+    );
+
+    if (!NT_SUCCESS(status)) {
+        KdPrint(("[VHF Driver] WdfDriverCreate failed: %x\n", status));
+        return status;
     }
-    
+
+    // 创建用户态控制接口
+    status = CreateControlDevice(WdfGetDriver());
+    if (!NT_SUCCESS(status)) {
+        KdPrint(("[VHF Driver] CreateControlDevice failed: %x\n", status));
+    }
+
     return status;
 }
 
+// ================= 创建设备（VHF） =================
 
 NTSTATUS EvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
 {
-    UNREFERENCED_PARAMETER(Driver);
-    
+    NTSTATUS status;
     WDFDEVICE device;
-    WDF_OBJECT_ATTRIBUTES attr;
-    WDF_PNPPOWER_EVENT_CALLBACKS pnpCallbacks;
-    WDF_IO_QUEUE_CONFIG queueConfig;
-    NTSTATUS status;
-
-    KdPrint(("[VHF Driver] EvtDeviceAdd called\n"));
-
-    // 设置设备类型为 FILE_DEVICE_UNKNOWN (VHF驱动必需)
-    WdfDeviceInitSetDeviceType(DeviceInit, FILE_DEVICE_UNKNOWN);
-    
-    // 设置为独占访问
-    WdfDeviceInitSetExclusive(DeviceInit, FALSE);
-
-
-    // 初始化PNP/Power事件回调
-    WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnpCallbacks);
-    pnpCallbacks.EvtDevicePrepareHardware = EvtDevicePrepareHardware;
-    pnpCallbacks.EvtDeviceReleaseHardware = EvtDeviceReleaseHardware;
-    WdfDeviceInitSetPnpPowerEventCallbacks(DeviceInit, &pnpCallbacks);
-    
-    KdPrint(("[VHF Driver] PnP callbacks registered\n"));
-
-    // 初始化设备上下文属性
-    WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr, DEVICE_CONTEXT);
-    attr.EvtCleanupCallback = EvtDeviceContextCleanup;
-
-    KdPrint(("[VHF Driver] Creating device object...\n"));
-    
-    // 创建设备对象
-    status = WdfDeviceCreate(&DeviceInit, &attr, &device);
-    if (!NT_SUCCESS(status))
-    {
-        KdPrint(("[VHF Driver] WdfDeviceCreate failed: 0x%x\n", status));
-        return status;
-    }
-
-
-    UNICODE_STRING symbolicLink;
-    RtlInitUnicodeString(&symbolicLink, L"\\DosDevices\\VirtualMouse");
-    status = WdfDeviceCreateSymbolicLink(device, &symbolicLink);
-    if (!NT_SUCCESS(status))
-    {
-        KdPrint(("[VHF Driver] WdfDeviceCreateSymbolicLink failed: 0x%x\n", status));
-        return status;
-    }
-
-
-    WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&queueConfig, WdfIoQueueDispatchParallel);
-    queueConfig.EvtIoDeviceControl = EvtIoDeviceControl;
-    
-    status = WdfIoQueueCreate(device, 
-                              &queueConfig, 
-                              WDF_NO_OBJECT_ATTRIBUTES, 
-                              WDF_NO_HANDLE);
-    if (!NT_SUCCESS(status))
-    {
-        KdPrint(("[VHF Driver] WdfIoQueueCreate failed: 0x%x\n", status));
-        return status;
-    }
-
-    KdPrint(("[VHF Driver] Device created successfully\n"));
-    return STATUS_SUCCESS;
-}
-
-
-NTSTATUS EvtDevicePrepareHardware(WDFDEVICE Device, 
-                                   WDFCMRESLIST ResourcesRaw, 
-                                   WDFCMRESLIST ResourcesTranslated)
-{
-    UNREFERENCED_PARAMETER(ResourcesRaw);
-    UNREFERENCED_PARAMETER(ResourcesTranslated);
-
-    PDEVICE_CONTEXT context = DeviceGetContext(Device);
-    NTSTATUS status;
-
-    KdPrint(("[VHF Driver] EvtDevicePrepareHardware called\n"));
-
-
-    context->VhfHandle = NULL;
-    context->IsStarted = FALSE;
-
-
-    status = CreateAndStartVhf(context, Device);
-    if (!NT_SUCCESS(status))
-    {
-        KdPrint(("[VHF Driver] CreateAndStartVhf failed: 0x%x\n", status));
-        return status;
-    }
-
-    KdPrint(("[VHF Driver] VHF started successfully\n"));
-    return STATUS_SUCCESS;
-}
-
-
-NTSTATUS EvtDeviceReleaseHardware(WDFDEVICE Device, WDFCMRESLIST ResourcesTranslated)
-{
-    UNREFERENCED_PARAMETER(ResourcesTranslated);
-
-    PDEVICE_CONTEXT context = DeviceGetContext(Device);
-
-    KdPrint(("[VHF Driver] EvtDeviceReleaseHardware called\n"));
-
-
-    StopAndDeleteVhf(context);
-
-    return STATUS_SUCCESS;
-}
-
-
-VOID EvtDeviceContextCleanup(WDFOBJECT DeviceObject)
-{
-    WDFDEVICE device = (WDFDEVICE)DeviceObject;
-    PDEVICE_CONTEXT context = DeviceGetContext(device);
-
-    KdPrint(("[VHF Driver] EvtDeviceContextCleanup called\n"));
-    KdPrint(("[VHF Driver] Cleanup reason: Device object being deleted\n"));
-
-
-    StopAndDeleteVhf(context);
-}
-
-
-NTSTATUS CreateAndStartVhf(PDEVICE_CONTEXT Context, WDFDEVICE Device)
-{
     VHF_CONFIG vhfConfig;
-    NTSTATUS status;
 
-    KdPrint(("[VHF Driver] Creating VHF...\n"));
-    KdPrint(("[VHF Driver] Report descriptor size: %d bytes\n", sizeof(g_ReportDescriptor)));
+    UNREFERENCED_PARAMETER(Driver);
 
-    // 初始化 VHF 配置
-    VHF_CONFIG_INIT(&vhfConfig,
-                    WdfDeviceWdmGetDeviceObject(Device),
-                    sizeof(g_ReportDescriptor),
-                    (PUCHAR)g_ReportDescriptor);
+    KdPrint(("[VHF Driver] EvtDeviceAdd\n"));
 
-    // 设置 HID 设备属性
+    //status = WdfDeviceCreate(&DeviceInit, WDF_NO_OBJECT_ATTRIBUTES, &device);
+    WDF_OBJECT_ATTRIBUTES attributes;
+    WDF_OBJECT_ATTRIBUTES_INIT(&attributes);
+    attributes.EvtCleanupCallback = EvtDeviceContextCleanup;
+
+    status = WdfDeviceCreate(&DeviceInit, &attributes, &device);
+    if (!NT_SUCCESS(status)) {
+        KdPrint(("[VHF Driver] WdfDeviceCreate failed: %x\n", status));
+        return status;
+    }
+
+    VHF_CONFIG_INIT(
+        &vhfConfig,
+        WdfDeviceWdmGetDeviceObject(device),
+        sizeof(g_MouseReportDescriptor),
+        g_MouseReportDescriptor
+    );
+
     vhfConfig.VendorID = 0x1234;
     vhfConfig.ProductID = 0x5678;
-    vhfConfig.VersionNumber = 0x0001;
+    vhfConfig.VersionNumber = 1;
 
-    KdPrint(("[VHF Driver] Calling VhfCreate...\n"));
-    status = VhfCreate(&vhfConfig, &Context->VhfHandle);
-    if (!NT_SUCCESS(status))
-    {
-        KdPrint(("[VHF Driver] VhfCreate failed: 0x%x\n", status));
-        Context->VhfHandle = NULL;
+    status = VhfCreate(&vhfConfig, &g_VhfHandle);
+    if (!NT_SUCCESS(status)) {
+        KdPrint(("[VHF Driver] VhfCreate failed: %x\n", status));
         return status;
     }
 
-    KdPrint(("[VHF Driver] VhfCreate succeeded, handle: 0x%p\n", Context->VhfHandle));
-
-    // 启动 VHF
-    KdPrint(("[VHF Driver] Calling VhfStart...\n"));
-    status = VhfStart(Context->VhfHandle);
-    if (!NT_SUCCESS(status))
-    {
-        KdPrint(("[VHF Driver] VhfStart failed: 0x%x\n", status));
-        VhfDelete(Context->VhfHandle, TRUE);
-        Context->VhfHandle = NULL;
+    status = VhfStart(g_VhfHandle);
+    if (!NT_SUCCESS(status)) {
+        KdPrint(("[VHF Driver] VhfStart failed: %x\n", status));
         return status;
     }
 
-    Context->IsStarted = TRUE;
-    KdPrint(("[VHF Driver] VhfStart succeeded\n"));
+    KdPrint(("[VHF Driver] VHF started\n"));
 
     return STATUS_SUCCESS;
 }
 
+// ================= 发送 HID 报告 =================
 
-VOID StopAndDeleteVhf(PDEVICE_CONTEXT Context)
+VOID SendMouseReport(CHAR dx, CHAR dy, UCHAR buttons)
 {
-    if (Context->VhfHandle != NULL)
-    {
-        KdPrint(("[VHF Driver] Deleting VHF...\n"));
-        
+    if (!g_VhfHandle)
+        return;
 
-        VhfDelete(Context->VhfHandle, TRUE);
-        Context->VhfHandle = NULL;
-        Context->IsStarted = FALSE;
-        
-        KdPrint(("[VHF Driver] VHF deleted\n"));
-    }
+    MOUSE_REPORT report;
+    RtlZeroMemory(&report, sizeof(report));
+
+    report.Buttons = buttons;
+    report.X = dx;
+    report.Y = dy;
+
+    HID_XFER_PACKET packet;
+    RtlZeroMemory(&packet, sizeof(packet));
+
+    packet.reportBuffer = (PUCHAR)&report;
+    packet.reportBufferLen = sizeof(report);
+    packet.reportId = 0;
+    KdPrint(("[VHF Driver] move: %d\n", report.X));
+    VhfReadReportSubmit(g_VhfHandle, &packet);
 }
 
+// ================= IOCTL 处理 =================
 
-VOID EvtIoDeviceControl(WDFQUEUE Queue,
-                        WDFREQUEST Request,
-                        size_t OutputBufferLength,
-                        size_t InputBufferLength,
-                        ULONG IoControlCode)
+VOID EvtIoDeviceControl(
+    WDFQUEUE Queue,
+    WDFREQUEST Request,
+    size_t OutputBufferLength,
+    size_t InputBufferLength,
+    ULONG IoControlCode
+)
 {
+    UNREFERENCED_PARAMETER(Queue);
     UNREFERENCED_PARAMETER(OutputBufferLength);
-    
+    UNREFERENCED_PARAMETER(InputBufferLength);
+
     NTSTATUS status = STATUS_SUCCESS;
-    PDEVICE_CONTEXT context;
-    WDFDEVICE device;
 
-
-    device = WdfIoQueueGetDevice(Queue);
-    context = DeviceGetContext(device);
-
-    switch (IoControlCode)
+    if (IoControlCode == IOCTL_MOUSE_MOVE)
     {
-        case IOCTL_VIRTUAL_MOUSE_MOVE:
-        {
-            PMOUSE_INPUT_DATA mouseData;
-            size_t bytesReturned;
+        PMOUSE_MOVE_DATA data = NULL;
 
-            
-            if (InputBufferLength < sizeof(MOUSE_INPUT_DATA))
-            {
-                status = STATUS_BUFFER_TOO_SMALL;
-                KdPrint(("[VHF Driver] Buffer too small for MOUSE_INPUT_DATA\n"));
-                break;
-            }
+        status = WdfRequestRetrieveInputBuffer(
+            Request,
+            sizeof(MOUSE_MOVE_DATA),
+            (PVOID*)&data,
+            NULL
+        );
 
-            
-            status = WdfRequestRetrieveInputBuffer(Request, 
-                                                   sizeof(MOUSE_INPUT_DATA), 
-                                                   &mouseData, 
-                                                   &bytesReturned);
-            if (!NT_SUCCESS(status))
-            {
-                KdPrint(("[VHF Driver] WdfRequestRetrieveInputBuffer failed: 0x%x\n", status));
-                break;
-            }
-
-
-            SendMouseReport(context, mouseData);
-            
-            KdPrint(("[VHF Driver] Mouse move: dx=%d, dy=%d, buttons=0x%02X\n",
-                     mouseData->dx, mouseData->dy, mouseData->buttons));
-            break;
-        }
-
-        case IOCTL_VIRTUAL_MOUSE_CLICK:
-        {
-            PMOUSE_INPUT_DATA mouseData;
-            size_t bytesReturned;
-
-            if (InputBufferLength < sizeof(MOUSE_INPUT_DATA))
-            {
-                status = STATUS_BUFFER_TOO_SMALL;
-                break;
-            }
-
-            status = WdfRequestRetrieveInputBuffer(Request,
-                                                   sizeof(MOUSE_INPUT_DATA),
-                                                   &mouseData,
-                                                   &bytesReturned);
-            if (!NT_SUCCESS(status))
-            {
-                KdPrint(("[VHF Driver] WdfRequestRetrieveInputBuffer failed: 0x%x\n", status));
-                break;
-            }
-
-
-            SendMouseReport(context, mouseData);
-            
-            KdPrint(("[VHF Driver] Mouse click: buttons=0x%02X\n", mouseData->buttons));
-            break;
-        }
-
-        default:
-        {
-            status = STATUS_INVALID_DEVICE_REQUEST;
-            KdPrint(("[VHF Driver] Invalid IOCTL: 0x%X\n", IoControlCode));
-            break;
+        if (NT_SUCCESS(status)) {
+            SendMouseReport(data->dx, data->dy, 0);
         }
     }
+    else if (IoControlCode == IOCTL_MOUSE_CLICK)
+    {
+        PMOUSE_CLICK_DATA data;
 
+        status = WdfRequestRetrieveInputBuffer(
+            Request,
+            sizeof(MOUSE_CLICK_DATA),
+            (PVOID*)&data,
+            NULL
+        );
+
+        if (NT_SUCCESS(status)) {
+            UCHAR btn = data->down ? data->button : 0;
+            SendMouseReport(0, 0, btn);
+        }
+    }
+    else
+    {
+        status = STATUS_INVALID_DEVICE_REQUEST;
+    }
 
     WdfRequestComplete(Request, status);
 }
 
+// ================= 控制设备 =================
 
-VOID SendMouseReport(PDEVICE_CONTEXT Context, PMOUSE_INPUT_DATA MouseData)
+NTSTATUS CreateControlDevice(WDFDRIVER Driver)
 {
-    UCHAR report[4];
-    HID_XFER_PACKET packet;
+    PWDFDEVICE_INIT pInit = NULL;
+    WDFDEVICE device;
+    WDF_IO_QUEUE_CONFIG queueConfig;
     NTSTATUS status;
+    UNICODE_STRING devName, symLink;
+    UNICODE_STRING sddl;
 
+    RtlInitUnicodeString(&sddl,
+        L"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGWGX;;;WD)");
+    //pInit = WdfControlDeviceInitAllocate(Driver, &SDDL_DEVOBJ_SYS_ALL_ADM_ALL);
+    pInit = WdfControlDeviceInitAllocate(Driver, &sddl);
+    if (!pInit)
+        return STATUS_INSUFFICIENT_RESOURCES;
 
-    if (Context->VhfHandle == NULL || !Context->IsStarted)
-    {
-        KdPrint(("[VHF Driver] VHF not initialized or started\n"));
-        return;
-    }
-
-
-    report[0] = 0x01;
-    report[1] = MouseData->buttons;
-    report[2] = MouseData->dx;
-    report[3] = MouseData->dy;
-
-
-    RtlZeroMemory(&packet, sizeof(packet));
-    packet.reportBuffer = report;
-    packet.reportBufferLen = sizeof(report);
-    packet.reportId = 0x01;           // Report ID
-
-
-    status = VhfReadReportSubmit(Context->VhfHandle, &packet);
+    RtlInitUnicodeString(&devName, L"\\Device\\VhfMouseCtl");
+    status = WdfDeviceInitAssignName(pInit, &devName);
     if (!NT_SUCCESS(status))
+        return status;
+
+    status = WdfDeviceCreate(&pInit, WDF_NO_OBJECT_ATTRIBUTES, &device);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    RtlInitUnicodeString(&symLink, L"\\DosDevices\\VhfMouseCtl");
+    status = WdfDeviceCreateSymbolicLink(device, &symLink);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(
+        &queueConfig,
+        WdfIoQueueDispatchSequential
+    );
+
+    queueConfig.EvtIoDeviceControl = EvtIoDeviceControl;
+
+    status = WdfIoQueueCreate(
+        device,
+        &queueConfig,
+        WDF_NO_OBJECT_ATTRIBUTES,
+        NULL
+    );
+
+    if (!NT_SUCCESS(status))
+        return status;
+
+    WdfControlFinishInitializing(device);
+
+    g_ControlDevice = device;
+
+    return STATUS_SUCCESS;
+}
+VOID EvtDeviceContextCleanup(WDFOBJECT DeviceObject)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    KdPrint(("[VHF Driver] Cleanup called\n"));
+
+    if (g_VhfHandle)
     {
-        KdPrint(("[VHF Driver] VhfReadReportSubmit failed: 0x%x\n", status));
+        VhfDelete(g_VhfHandle, TRUE);  // TRUE = 同步删除（必须）
+        g_VhfHandle = NULL;
+
+        KdPrint(("[VHF Driver] VhfDelete done\n"));
     }
 }

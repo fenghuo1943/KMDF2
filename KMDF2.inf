@@ -10,8 +10,14 @@ CatalogFile = KMDF2.cat
 DriverVer   = 04/23/2026,1.0.0.1
 PnpLockdown = 1
 
-[DestinationDirs]
-DefaultDestDir = 12
+[Manufacturer]
+%ManufacturerName% = Standard,NT$ARCH$
+
+[Standard.NT$ARCH$]
+;%DeviceName%=Install,Root\KMDF2
+%KMDF2.DeviceDesc% = KMDF2_Device, Root\KMDF2
+
+
 
 [SourceDisksNames]
 1 = %DiskName%,,,
@@ -19,11 +25,7 @@ DefaultDestDir = 12
 [SourceDisksFiles]
 KMDF2.sys = 1
 
-[Manufacturer]
-%ManufacturerName% = Standard,NT$ARCH$
 
-[Standard.NT$ARCH$]
-%KMDF2.DeviceDesc% = KMDF2_Device, Root\KMDF2
 
 ; =================== 设备安装 ===================
 
@@ -41,7 +43,8 @@ AddReg = KMDF2_Device.NT.HW.AddReg
 [KMDF2_Device.NT.HW.AddReg]
 ; 添加 mshidkmdf 作为下层过滤器 (VHF必需)
 ; FLG_ADDREG_TYPE_MULTI_SZ = 0x00010000
-HKR,,"LowerFilters",0x00010000,"mshidkmdf"
+;HKR,,"LowerFilters",0x00010000,"mshidkmdf"
+HKR,,"LowerFilters",0x00010000,"vhf"
 
 ; =================== 服务安装 ===================
 
@@ -62,6 +65,9 @@ KmdfService = KMDF2,KMDF2_wdfsect
 
 [KMDF2_wdfsect]
 KmdfLibraryVersion = $KMDFVERSION$
+
+[DestinationDirs]
+Drivers_Dir = 12
 
 ; =================== 字符串定义 ===================
 

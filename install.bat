@@ -35,6 +35,7 @@ if %errorlevel% neq 0 (
 :: ====== 卸载旧设备 ======
 echo.
 echo [STEP] Removing old device...
+devcon disable %DEVICE_ID%
 devcon remove %DEVICE_ID%
 
 :: ====== 删除旧驱动（可选）=====

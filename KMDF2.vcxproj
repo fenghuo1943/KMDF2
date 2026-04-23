@@ -90,7 +90,7 @@
       <SpecifyDriverVerDirectiveVersion>false</SpecifyDriverVerDirectiveVersion>
     </Inf>
     <Link>
-      <AdditionalDependencies>VhfKm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>VhfKm.lib;$(DDK_LIB_PATH)\wdmsec.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

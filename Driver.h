@@ -1,31 +1,50 @@
 ﻿#pragma once
+
 #include <ntddk.h>
 #include <wdf.h>
 #include <vhf.h>
+#include <wdmsec.h>
+//#include <hidport.h>
 
-#define IOCTL_VIRTUAL_MOUSE_MOVE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
-#define IOCTL_VIRTUAL_MOUSE_CLICK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)
-
-typedef struct _MOUSE_INPUT_DATA {
-    CHAR dx;
-    CHAR dy;
-    UCHAR buttons;
-} MOUSE_INPUT_DATA, *PMOUSE_INPUT_DATA;
-
-typedef struct _DEVICE_CONTEXT {
-    VHFHANDLE VhfHandle;
-    BOOLEAN IsStarted;
-} DEVICE_CONTEXT, *PDEVICE_CONTEXT;
-
-WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(DEVICE_CONTEXT, DeviceGetContext)
-
+// Driver
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD EvtDeviceAdd;
-EVT_WDF_DEVICE_PREPARE_HARDWARE EvtDevicePrepareHardware;
-EVT_WDF_DEVICE_RELEASE_HARDWARE EvtDeviceReleaseHardware;
 EVT_WDF_OBJECT_CONTEXT_CLEANUP EvtDeviceContextCleanup;
+
+// IOCTL 回调
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL EvtIoDeviceControl;
 
-NTSTATUS CreateAndStartVhf(PDEVICE_CONTEXT Context, WDFDEVICE Device);
-VOID StopAndDeleteVhf(PDEVICE_CONTEXT Context);
-VOID SendMouseReport(PDEVICE_CONTEXT Context, PMOUSE_INPUT_DATA MouseData);
+// 全局 VHF handle
+extern VHFHANDLE g_VhfHandle;
+
+
+// ================= IOCTL 定义 =================
+
+#define IOCTL_MOUSE_MOVE  CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_MOUSE_CLICK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+// 鼠标移动
+typedef struct _MOUSE_MOVE_DATA {
+    CHAR dx;
+    CHAR dy;
+} MOUSE_MOVE_DATA, * PMOUSE_MOVE_DATA;
+
+// 鼠标点击
+typedef struct _MOUSE_CLICK_DATA {
+    UCHAR button;
+    UCHAR down;
+} MOUSE_CLICK_DATA, * PMOUSE_CLICK_DATA;
+
+// ================= HID 报告结构 =================
+
+typedef struct _MOUSE_REPORT {
+    UCHAR Buttons;
+    CHAR  X;
+    CHAR  Y;
+} MOUSE_REPORT;
+
+// 创建控制设备
+NTSTATUS CreateControlDevice(WDFDRIVER Driver);
+
+// 发送鼠标数据
+VOID SendMouseReport(CHAR dx, CHAR dy, UCHAR buttons);
