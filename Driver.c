@@ -59,7 +59,8 @@ NTSTATUS VirtualMouseEvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
 
     WDF_PNPPOWER_EVENT_CALLBACKS pnpCallbacks;
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnpCallbacks);
-    pnpCallbacks.EvtDeviceSelfManagedIoInit = VirtualMouseEvtSelfManagedIoInit;
+    pnpCallbacks.EvtDevicePrepareHardware = VirtualMouseEvtDevicePrepareHardware;
+    pnpCallbacks.EvtDeviceReleaseHardware = VirtualMouseEvtDeviceReleaseHardware;
     WdfDeviceInitSetPnpPowerEventCallbacks(DeviceInit, &pnpCallbacks);
 
     WDFDEVICE device;
@@ -79,8 +80,11 @@ NTSTATUS VirtualMouseEvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
     return status;
 }
 
-NTSTATUS VirtualMouseEvtSelfManagedIoInit(WDFDEVICE Device)
+NTSTATUS VirtualMouseEvtDevicePrepareHardware(WDFDEVICE Device, WDFCMRESLIST ResourcesRaw, WDFCMRESLIST ResourcesTranslated)
 {
+    UNREFERENCED_PARAMETER(ResourcesRaw);
+    UNREFERENCED_PARAMETER(ResourcesTranslated);
+
     PDEVICE_CONTEXT ctx = DeviceGetContext(Device);
     VHF_CONFIG vhfConfig;
 
@@ -109,6 +113,20 @@ NTSTATUS VirtualMouseEvtSelfManagedIoInit(WDFDEVICE Device)
     }
 
     KdPrint(("VHF started\n"));
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS VirtualMouseEvtDeviceReleaseHardware(WDFDEVICE Device, WDFCMRESLIST ResourcesTranslated)
+{
+    UNREFERENCED_PARAMETER(ResourcesTranslated);
+
+    PDEVICE_CONTEXT ctx = DeviceGetContext(Device);
+    if (ctx->VhfHandle != NULL)
+    {
+        VhfDelete(ctx->VhfHandle, TRUE);
+        ctx->VhfHandle = NULL;
+    }
+
     return STATUS_SUCCESS;
 }
 
