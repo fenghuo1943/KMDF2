@@ -1,4 +1,4 @@
-; KMDF2.inf - VHF Virtual Mouse Driver
+; FHInput.inf - VHF Virtual Mouse Driver
 ; Based on Microsoft VHF Documentation
 
 [Version]
@@ -6,7 +6,7 @@ Signature   = "$WINDOWS NT$"
 Class       = HIDClass
 ClassGuid   = {745A17A0-74D3-11D0-B6FE-00A0C90F57DA}
 Provider    = %ManufacturerName%
-CatalogFile = KMDF2.cat
+CatalogFile = FHInput.cat
 DriverVer   = 04/23/2026,1.0.0.1
 PnpLockdown = 1
 
@@ -14,8 +14,8 @@ PnpLockdown = 1
 %ManufacturerName% = Standard,NT$ARCH$
 
 [Standard.NT$ARCH$]
-;%DeviceName%=Install,Root\KMDF2
-%KMDF2.DeviceDesc% = KMDF2_Device, Root\KMDF2
+;%DeviceName%=Install,Root\FHInput
+%FHInput.DeviceDesc% = FHInput_Device, Root\FHInput
 
 
 
@@ -23,24 +23,24 @@ PnpLockdown = 1
 1 = %DiskName%,,,
 
 [SourceDisksFiles]
-KMDF2.sys = 1
+FHInput.sys = 1
 
 
 
 ; =================== 设备安装 ===================
 
-[KMDF2_Device.NT]
+[FHInput_Device.NT]
 CopyFiles = Drivers_Dir
 
 [Drivers_Dir]
-KMDF2.sys
+FHInput.sys
 
 ; =================== 硬件注册表设置 ===================
 
-[KMDF2_Device.NT.HW]
-AddReg = KMDF2_Device.NT.HW.AddReg
+[FHInput_Device.NT.HW]
+AddReg = FHInput_Device.NT.HW.AddReg
 
-[KMDF2_Device.NT.HW.AddReg]
+[FHInput_Device.NT.HW.AddReg]
 ; 添加 mshidkmdf 作为下层过滤器 (VHF必需)
 ; FLG_ADDREG_TYPE_MULTI_SZ = 0x00010000
 ;HKR,,"LowerFilters",0x00010000,"mshidkmdf"
@@ -48,22 +48,22 @@ HKR,,"LowerFilters",0x00010000,"vhf"
 
 ; =================== 服务安装 ===================
 
-[KMDF2_Device.NT.Services]
-AddService = KMDF2,0x00000002,KMDF2_Service_Inst
+[FHInput_Device.NT.Services]
+AddService = FHInput,0x00000002,FHInput_Service_Inst
 
-[KMDF2_Service_Inst]
-DisplayName    = %KMDF2.SVCDESC%
+[FHInput_Service_Inst]
+DisplayName    = %FHInput.SVCDESC%
 ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
 StartType      = 3               ; SERVICE_DEMAND_START
 ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
-ServiceBinary  = %12%\KMDF2.sys
+ServiceBinary  = %12%\FHInput.sys
 
 ; =================== KMDF 配置 ===================
 
-[KMDF2_Device.NT.Wdf]
-KmdfService = KMDF2,KMDF2_wdfsect
+[FHInput_Device.NT.Wdf]
+KmdfService = FHInput,FHInput_wdfsect
 
-[KMDF2_wdfsect]
+[FHInput_wdfsect]
 KmdfLibraryVersion = $KMDFVERSION$
 
 [DestinationDirs]
@@ -72,7 +72,7 @@ Drivers_Dir = 12
 ; =================== 字符串定义 ===================
 
 [Strings]
-ManufacturerName = "MyCompany"
-DiskName = "VHF Virtual Mouse Installation Disk"
-KMDF2.DeviceDesc = "VHF Virtual Mouse Device"
-KMDF2.SVCDESC = "VHF Virtual Mouse Service"
+ManufacturerName = "FengHuo1943"
+DiskName = "FHInput Installation Disk"
+FHInput.DeviceDesc = "FHInput Device"
+FHInput.SVCDESC = "FHInput Service"

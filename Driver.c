@@ -2,16 +2,21 @@
 #include <wdmsec.h>
 
 #pragma comment(lib, "vhfkm.lib")
+#pragma comment(lib, "Wdmsec.lib")
 
 VHFHANDLE g_VhfHandle = NULL;
 WDFDEVICE g_ControlDevice = NULL;
 
 // ================= HID Descriptor =================
 
-UCHAR g_MouseReportDescriptor[] = {
+UCHAR g_HidReportDescriptor[] = {
+
+    // ================= Mouse (Report ID 1) =================
     0x05, 0x01,
     0x09, 0x02,
     0xA1, 0x01,
+    0x85, 0x01,        // Report ID = 1
+
     0x09, 0x01,
     0xA1, 0x00,
 
@@ -31,6 +36,12 @@ UCHAR g_MouseReportDescriptor[] = {
     0x05, 0x01,
     0x09, 0x30,
     0x09, 0x31,
+    0x09, 0x38,        // Wheel
+    0x15, 0x81,        // Logical Min (-127)
+    0x25, 0x7F,        // Logical Max (127)
+    0x75, 0x08,
+    0x95, 0x01,
+    0x81, 0x06,
     0x15, 0x81,
     0x25, 0x7F,
     0x75, 0x08,
@@ -38,6 +49,36 @@ UCHAR g_MouseReportDescriptor[] = {
     0x81, 0x06,
 
     0xC0,
+    0xC0,
+
+    // ================= Keyboard (Report ID 2) =================
+    0x05, 0x01,
+    0x09, 0x06,
+    0xA1, 0x01,
+    0x85, 0x02,        // Report ID = 2
+
+    0x05, 0x07,
+    0x19, 0xE0,
+    0x29, 0xE7,
+    0x15, 0x00,
+    0x25, 0x01,
+    0x75, 0x01,
+    0x95, 0x08,
+    0x81, 0x02,        // modifier
+
+    0x95, 0x01,
+    0x75, 0x08,
+    0x81, 0x03,        // reserved
+
+    0x95, 0x06,
+    0x75, 0x08,
+    0x15, 0x00,
+    0x25, 0x65,
+    0x05, 0x07,
+    0x19, 0x00,
+    0x29, 0x65,
+    0x81, 0x00,        // key array
+
     0xC0
 };
 
@@ -100,8 +141,8 @@ NTSTATUS EvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
     VHF_CONFIG_INIT(
         &vhfConfig,
         WdfDeviceWdmGetDeviceObject(device),
-        sizeof(g_MouseReportDescriptor),
-        g_MouseReportDescriptor
+        sizeof(g_HidReportDescriptor),
+        g_HidReportDescriptor
     );
 
     vhfConfig.VendorID = 0x1234;
@@ -127,7 +168,7 @@ NTSTATUS EvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
 
 // ================= 发送 HID 报告 =================
 
-VOID SendMouseReport(CHAR dx, CHAR dy, UCHAR buttons)
+VOID SendMouseReport(CHAR dx, CHAR dy, CHAR wheel, UCHAR buttons)
 {
     if (!g_VhfHandle)
         return;
@@ -135,17 +176,43 @@ VOID SendMouseReport(CHAR dx, CHAR dy, UCHAR buttons)
     MOUSE_REPORT report;
     RtlZeroMemory(&report, sizeof(report));
 
+    report.ReportID = 1;
     report.Buttons = buttons;
     report.X = dx;
     report.Y = dy;
+    report.Wheel = wheel;
 
     HID_XFER_PACKET packet;
     RtlZeroMemory(&packet, sizeof(packet));
 
     packet.reportBuffer = (PUCHAR)&report;
     packet.reportBufferLen = sizeof(report);
-    packet.reportId = 0;
+    packet.reportId = 1;
     KdPrint(("[VHF Driver] move: %d\n", report.X));
+    VhfReadReportSubmit(g_VhfHandle, &packet);
+}
+VOID SendKeyboardReport(UCHAR modifier, UCHAR* keys, UCHAR keyCount)
+{
+    if (!g_VhfHandle)
+        return;
+
+    KEYBOARD_REPORT report;
+    RtlZeroMemory(&report, sizeof(report));
+
+    report.ReportID = 2;
+    report.Modifier = modifier;
+
+    for (int i = 0; i < keyCount && i < 6; i++) {
+        report.Key[i] = keys[i];
+    }
+
+    HID_XFER_PACKET packet;
+    RtlZeroMemory(&packet, sizeof(packet));
+
+    packet.reportBuffer = (PUCHAR)&report;
+    packet.reportBufferLen = sizeof(report);
+    packet.reportId = 2;
+
     VhfReadReportSubmit(g_VhfHandle, &packet);
 }
 
@@ -165,7 +232,9 @@ VOID EvtIoDeviceControl(
 
     NTSTATUS status = STATUS_SUCCESS;
 
-    if (IoControlCode == IOCTL_MOUSE_MOVE)
+    switch (IoControlCode)
+    {
+    case IOCTL_MOUSE_MOVE:
     {
         PMOUSE_MOVE_DATA data = NULL;
 
@@ -177,12 +246,14 @@ VOID EvtIoDeviceControl(
         );
 
         if (NT_SUCCESS(status)) {
-            SendMouseReport(data->dx, data->dy, 0);
+            SendMouseReport(data->dx, data->dy, 0, 0);
         }
+        break;
     }
-    else if (IoControlCode == IOCTL_MOUSE_CLICK)
+
+    case IOCTL_MOUSE_CLICK:
     {
-        PMOUSE_CLICK_DATA data;
+        PMOUSE_CLICK_DATA data = NULL;
 
         status = WdfRequestRetrieveInputBuffer(
             Request,
@@ -192,13 +263,59 @@ VOID EvtIoDeviceControl(
         );
 
         if (NT_SUCCESS(status)) {
-            UCHAR btn = data->down ? data->button : 0;
-            SendMouseReport(0, 0, btn);
+            if (data->down) {
+                SendMouseReport(0, 0, 0, data->button);
+            }
+            else {
+                SendMouseReport(0, 0, 0, 0);
+            }
         }
+        break;
     }
-    else
+
+    case IOCTL_MOUSE_WHEEL:
     {
+        PMOUSE_WHEEL_DATA data = NULL;
+
+        status = WdfRequestRetrieveInputBuffer(
+            Request,
+            sizeof(MOUSE_WHEEL_DATA),
+            (PVOID*)&data,
+            NULL
+        );
+
+        if (NT_SUCCESS(status)) {
+            SendMouseReport(0, 0, data->wheel, 0);
+            SendMouseReport(0, 0, 0, 0); // 清零
+        }
+        break;
+    }
+
+    case IOCTL_KEYBOARD_MULTI:
+    {
+        PKEYBOARD_MULTI_DATA data = NULL;
+
+        status = WdfRequestRetrieveInputBuffer(
+            Request,
+            sizeof(KEYBOARD_MULTI_DATA),
+            (PVOID*)&data,
+            NULL
+        );
+
+        if (NT_SUCCESS(status)) {
+
+            SendKeyboardReport(data->modifier, data->keys, data->keyCount);
+
+            // 松开（非常重要）
+            UCHAR empty[6] = { 0 };
+            SendKeyboardReport(0, empty, 0);
+        }
+        break;
+    }
+
+    default:
         status = STATUS_INVALID_DEVICE_REQUEST;
+        break;
     }
 
     WdfRequestComplete(Request, status);
@@ -218,11 +335,11 @@ NTSTATUS CreateControlDevice(WDFDRIVER Driver)
     RtlInitUnicodeString(&sddl,
         L"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGWGX;;;WD)");
     //pInit = WdfControlDeviceInitAllocate(Driver, &SDDL_DEVOBJ_SYS_ALL_ADM_ALL);
-    pInit = WdfControlDeviceInitAllocate(Driver, &sddl);
+    pInit = WdfControlDeviceInitAllocate(Driver, &SDDL_DEVOBJ_SYS_ALL_ADM_ALL);
     if (!pInit)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    RtlInitUnicodeString(&devName, L"\\Device\\VhfMouseCtl");
+    RtlInitUnicodeString(&devName, L"\\Device\\FenghuoVHF");
     status = WdfDeviceInitAssignName(pInit, &devName);
     if (!NT_SUCCESS(status))
         return status;
@@ -231,7 +348,7 @@ NTSTATUS CreateControlDevice(WDFDRIVER Driver)
     if (!NT_SUCCESS(status))
         return status;
 
-    RtlInitUnicodeString(&symLink, L"\\DosDevices\\VhfMouseCtl");
+    RtlInitUnicodeString(&symLink, L"\\DosDevices\\FenghuoVHF");
     status = WdfDeviceCreateSymbolicLink(device, &symLink);
     if (!NT_SUCCESS(status))
         return status;

@@ -6,10 +6,10 @@ echo   KMDF Driver Install Script
 echo ================================
 cd /d %~dp0
 :: ====== 配置区 ======
-set DEVICE_ID=root\KMDF2
-set DRIVER_DIR=.\x64\Debug\KMDF2
-set INF_FILE=%DRIVER_DIR%\KMDF2.inf
-set SYS_FILE=%DRIVER_DIR%\KMDF2.sys
+set DEVICE_ID=root\FHInput
+set DRIVER_DIR=.\x64\Debug\FHInput
+set INF_FILE=%DRIVER_DIR%\FHInput.inf
+set SYS_FILE=%DRIVER_DIR%\FHInput.sys
 :: ====== 检查文件 ======
 if not exist "%INF_FILE%" (
     echo [ERROR] INF not found: %INF_FILE%
